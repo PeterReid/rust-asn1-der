@@ -10,4 +10,5 @@ pub enum Error {
     Malformed,
     MalformedObjectIdentifier,
     ObjectIdentifierTooLarge,
+    InvalidUTF8,
 }

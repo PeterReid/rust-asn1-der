@@ -10,6 +10,7 @@ use object_identifier::ObjectIdentifier;
 use error::Error;
 
 use std::usize;
+use std::str;
 
 fn usize_bytes() -> usize {
     // TODO: once usize::BYTES is stabilized, we can use that
@@ -27,7 +28,9 @@ enum Asn1Value<'a> {
     Null,
     Boolean(bool),
     Integer(Integer<'a>),
-    ObjectIdentifier(ObjectIdentifier<'a>)
+    ObjectIdentifier(ObjectIdentifier<'a>),
+    OctetString(&'a [u8]),
+    Utf8String(&'a str),
 }
 
 struct Parser<'a> {
@@ -123,7 +126,7 @@ impl<'a> Parser<'a> {
     }
 
     fn read_octet_string(&mut self, length: usize) -> Result<Asn1Value, Error> {
-        Err(Error::NotImplemented)
+        Ok(Asn1Value::OctetString( try!(self.consume(length)) ))
     }
 
     fn read_null(&mut self, length: usize) -> Result<Asn1Value, Error> {
@@ -140,7 +143,9 @@ impl<'a> Parser<'a> {
     }
 
     fn read_utf8_string(&mut self, length: usize) -> Result<Asn1Value, Error> {
-        Err(Error::NotImplemented)
+        let utf8_bytes = try!(self.consume(length));
+        let utf8_str = try!(str::from_utf8(utf8_bytes).map_err(|_| Error::InvalidUTF8));
+        Ok(Asn1Value::Utf8String( utf8_str ))
     }
 
     fn read_printable_string(&mut self, length: usize) -> Result<Asn1Value, Error> {
