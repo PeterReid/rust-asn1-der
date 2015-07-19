@@ -4,10 +4,12 @@
 pub mod integer;
 pub mod object_identifier;
 pub mod error;
+pub mod printable_string;
 
 use integer::Integer;
 use object_identifier::ObjectIdentifier;
 use error::Error;
+use printable_string::to_printable_string;
 
 use std::usize;
 use std::str;
@@ -24,21 +26,22 @@ fn usize_bytes() -> usize {
 }
 
 
-enum Asn1Value<'a> {
+pub enum Asn1Value<'a> {
     Null,
     Boolean(bool),
     Integer(Integer<'a>),
     ObjectIdentifier(ObjectIdentifier<'a>),
     OctetString(&'a [u8]),
+    PrintableString(&'a str),
     Utf8String(&'a str),
 }
 
-struct Parser<'a> {
+pub struct Parser<'a> {
     input: &'a [u8]
 }
 
 impl<'a> Parser<'a> {
-    fn new(input: &'a [u8]) -> Parser<'a> {
+    pub fn new(input: &'a [u8]) -> Parser<'a> {
         Parser{
             input: input
         }
@@ -149,7 +152,9 @@ impl<'a> Parser<'a> {
     }
 
     fn read_printable_string(&mut self, length: usize) -> Result<Asn1Value, Error> {
-        Err(Error::NotImplemented)
+        let bs = try!(self.consume(length));
+        
+        Ok(Asn1Value::PrintableString( try!(to_printable_string(bs)) ))
     }
 
     fn read_ia5_string(&mut self, length: usize) -> Result<Asn1Value, Error> {
@@ -168,7 +173,7 @@ impl<'a> Parser<'a> {
         Err(Error::NotImplemented)
     }
     
-    fn next(&mut self) -> Result<Asn1Value, Error> {
+    pub fn next(&mut self) -> Result<Asn1Value, Error> {
         let value_type = try!(self.consume_one());
         let length = try!(self.read_length());
         

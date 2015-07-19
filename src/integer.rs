@@ -35,17 +35,23 @@ impl<'a> Integer<'a> {
     }
 }
 
-#[test]
-fn integer() {
-    let xs = [0x02, 0x01, 0x03];
-    let mut p = Parser::new(&xs[..]);
+#[cfg(test)]
+mod test {
+    use ::Parser;
+    use ::Asn1Value;
     
-    match p.next() {
-        Ok(Asn1Value::Integer(x)) => {
-            assert_eq!(x.as_u8(), Some(3));
-        },
-        _ => {
-            assert!(false);
+    #[test]
+    fn integer() {
+        let xs = [0x02, 0x01, 0x03];
+        let mut p = Parser::new(&xs[..]);
+        
+        match p.next() {
+            Ok(Asn1Value::Integer(x)) => {
+                assert_eq!(x.as_u8(), Some(3));
+            },
+            _ => {
+                assert!(false);
+            }
         }
     }
 }
