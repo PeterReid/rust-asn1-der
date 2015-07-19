@@ -12,4 +12,5 @@ pub enum Error {
     ObjectIdentifierTooLarge,
     InvalidUTF8,
     InvalidPrintableString,
+    StructureOverrun,
 }

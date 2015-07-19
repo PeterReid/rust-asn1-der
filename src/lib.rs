@@ -34,16 +34,36 @@ pub enum Asn1Value<'a> {
     OctetString(&'a [u8]),
     PrintableString(&'a str),
     Utf8String(&'a str),
+    SequenceStart,
+    SequenceEnd,
+    SetStart,
+    SetEnd,
+}
+
+#[derive(Debug, Copy, Clone)]
+enum StructureKind {
+    Sequence,
+    Set,
+}
+
+#[derive(Debug, Copy, Clone)]
+struct Structure {
+    kind: StructureKind,
+    end_position: usize,
 }
 
 pub struct Parser<'a> {
-    input: &'a [u8]
+    input: &'a [u8],
+    position: usize,
+    structures: Vec<Structure>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(input: &'a [u8]) -> Parser<'a> {
         Parser{
-            input: input
+            input: input,
+            position: 0,
+            structures: Vec::new(),
         }
     }
 
@@ -85,25 +105,27 @@ impl<'a> Parser<'a> {
     }
 
     fn consume_one(&mut self) -> Result<u8, Error> {
-        if self.input.is_empty() {
-            return Err(Error::EOF);
+        match self.input.get(self.position) {
+            Some(x) => {
+                self.position += 1;
+                Ok(*x)
+            }
+            None => {
+                Err(Error::EOF)
+            }
         }
-        
-        let result = self.input[0];
-        
-        self.input = &self.input[1..];
-        
-        Ok(result)
     }
 
     fn consume(&mut self, count: usize) -> Result<&[u8], Error> {
-        if self.input.len() < count {
+        // Check that we have enough. The somewhat strange logic is to avoid an overflow given
+        // a ridiculous count.
+        if count > self.input.len() || self.input.len() - count < self.position {
             return Err(Error::EOF);
         }
         
-        let (result, remainder) = self.input.split_at(count);
+        let result = &self.input[self.position .. self.position + count];
         
-        self.input = remainder;
+        self.position += count;
         
         Ok(result)
     }
@@ -165,15 +187,46 @@ impl<'a> Parser<'a> {
         Err(Error::NotImplemented)
     }
 
+    fn read_structure(&mut self, length: usize, kind: StructureKind) -> Result<Asn1Value, Error> {
+        let maximum_allowed_end = self.structures.last().map(|x| x.end_position).unwrap_or(self.input.len());
+        if length > maximum_allowed_end || self.position > maximum_allowed_end - length {
+            return Err(Error::EOF);
+        }
+        
+        self.structures.push(Structure{
+            kind: kind,
+            end_position: self.position + length,
+        });
+        
+        Ok(match kind {
+            StructureKind::Sequence => Asn1Value::SequenceStart,
+            StructureKind::Set => Asn1Value::SetStart,
+        })
+    }
+    
     fn read_sequence(&mut self, length: usize) -> Result<Asn1Value, Error> {
-        Err(Error::NotImplemented)
+        self.read_structure(length, StructureKind::Sequence)
     }
 
     fn read_set(&mut self, length: usize) -> Result<Asn1Value, Error> {
-        Err(Error::NotImplemented)
+        self.read_structure(length, StructureKind::Set)
     }
     
     pub fn next(&mut self) -> Result<Asn1Value, Error> {
+        if let Some(innermost_structure) = self.structures.last().map(|x| *x) {
+            if innermost_structure.end_position <= self.position {
+                if innermost_structure.end_position != self.position {
+                    return Err(Error::StructureOverrun);
+                }
+                
+                self.structures.pop();
+                return Ok(match innermost_structure.kind {
+                    StructureKind::Sequence => Asn1Value::SequenceEnd,
+                    StructureKind::Set => Asn1Value::SetEnd,
+                });
+            }
+        }
+    
         let value_type = try!(self.consume_one());
         let length = try!(self.read_length());
         
@@ -195,3 +248,41 @@ impl<'a> Parser<'a> {
     }
 }
 
+#[cfg(test)]
+mod test {
+    use super::{Asn1Value, Parser};
+    use super::error::Error;
+    
+    #[test]
+    fn sequence() {
+        let bs = [0x30, 0x06,
+                  0x01, 0x01, 0x00,
+                  0x01, 0x01, 0xff];
+        let mut parser = Parser::new(&bs);
+        match parser.next().unwrap() {
+            Asn1Value::SequenceStart => {},
+            _ => { panic!("Expected sequence start"); }
+        };
+        
+        match parser.next().unwrap() {
+            Asn1Value::Boolean(false) => {},
+            _ => { panic!("Expected a 'false'"); }
+        };
+        
+        match parser.next().unwrap() {
+            Asn1Value::Boolean(true) => {},
+            _ => { panic!("Expected a 'true'"); }
+        };
+        
+        match parser.next().unwrap() {
+            Asn1Value::SequenceEnd => {},
+            _ => { panic!("Expected sequence end"); }
+        }
+        
+        match parser.next() {
+            Err(Error::EOF) => {},
+            _ => { panic!("Expected EOF") }
+        }
+    }
+
+}
